@@ -97,9 +97,6 @@ public final class OneDimAveragingPhaser {
      * uses the Phaser.arrive and Phaser.awaitAdvance APIs to overlap
      * computation with barrier completion.
      *
-     * TODO Complete this method based on the provided runSequential and
-     * runParallelBarrier methods.
-     *
      * @param iterations The number of iterations to run
      * @param myNew A double array that starts as the output array
      * @param myVal A double array that contains the initial input to the
@@ -107,9 +104,65 @@ public final class OneDimAveragingPhaser {
      * @param n The size of this problem
      * @param tasks The number of threads/tasks to use to compute the solution
      */
-    public static void runParallelFuzzyBarrier(final int iterations,
-            final double[] myNew, final double[] myVal, final int n,
-            final int tasks) {
+    public static void runParallelFuzzyBarrier(
+        final int iterations,
+        final double[] myNew,
+        final double[] myVal,
+        final int n,
+        final int tasks
+    ) {
+        final Phaser[] ph = new Phaser[tasks];
 
+        for (int ii = 0; ii < tasks; ii++) {
+            ph[ii] = new Phaser(1);
+        }
+
+        Thread[] threads = new Thread[tasks];
+
+        for (int ii = 0; ii < tasks; ii++) {
+            final int i = ii;
+
+            threads[ii] = new Thread(() -> {
+                double[] localOld = myVal;
+                double[] localNew = myNew;
+
+                final int chunkSize = (n + tasks - 1) / tasks;
+                final int left = (i * chunkSize) + 1;
+                final int tmpRight = (left + chunkSize) - 1; 
+                final int right = tmpRight > n ? n : tmpRight;
+
+
+                for (int iter = 0; iter < iterations; iter++) {
+                    localNew[left] = (localOld[left - 1] + localOld[left + 1]) / 2.0;
+                    localNew[right] = (localOld[right - 1] + localOld[right + 1]) / 2.0;
+
+                    final int phase = ph[i].arrive();
+
+                    for (int j = left + 1; j <= right - 1; j++) {
+                        localNew[j] = (localOld[j - 1] + localOld[j + 1]) / 2.0;
+                    }
+
+                    if (i > 0) {
+                        ph[i - 1].awaitAdvance(phase);
+                    }
+                    if (i < tasks - 1) {
+                        ph[i + 1].awaitAdvance(phase);
+                    }
+
+                    double[] temp = localNew;
+                    localNew = localOld;
+                    localOld = temp;
+                }
+            });
+            threads[ii].start();
+        }
+
+        for (int ii = 0; ii < tasks; ii++) {
+            try {
+                threads[ii].join();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }
     }
 }
